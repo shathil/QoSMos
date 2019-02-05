@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">QoSMos</string>
+    <string name="action_settings">Settings</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="connecting">Connecting</string>
+</resources>
