@@ -26,6 +26,8 @@ void* thread_read_vpn(void* n){
 
     char buf[4096] = {0};
     int len = 0;
+    int reader_media_context = -1;
+
     while(running) {
         len = read(vpnfd, buf, 4096);
         //TODO: Here we employ packet reader to find the type of service.
@@ -42,9 +44,18 @@ void* thread_read_vpn(void* n){
         //TODO: we need here a switch case for the selecting the tunnels. We only consider the outgoing packet
 
 
+        if (reader_media_context == -1){
+            pthread_mutex_lock(&media_lock);
+            if(device_media_context > 0)
+                reader_media_context = device_media_context;
+            if(device_media_context ==  0)
+                reader_media_context = -1;
+            pthread_mutex_unlock(&media_lock);
+        }
 
 
-        struct packet *packet = check_modify_dscp(buf);
+
+        struct packet *packet = check_modify_dscp(buf,0);
 
         // Update flow table through JNI calls
 
@@ -237,8 +248,9 @@ struct packet *check_modify_dscp(const char *data){
 
     const char* flow_key = (const char*)get_flow_tuples(newpack);
     int remain_size = expected_ipv4->tot_len; // this reaminging size only excludes the IP header
-    struct flow *newflow = flow_table[flow_key];
 
+
+    struct flow *newflow = flow_table[flow_key];
     if(newflow== NULL){
 
         newflow = (struct flow*)malloc(sizeof(flow));
@@ -249,6 +261,7 @@ struct packet *check_modify_dscp(const char *data){
         flow_table[flow_key] = newflow;
 
     }else{
+
 
         // we update the flowtype here or the outgoing packet update side
         newflow->last_seen = get_time_second();
@@ -591,10 +604,26 @@ Java_nodes_helsinki_qosmos_NativeTunnels_dscpTunnelSocks(JNIEnv *, jobject) {
 
 }
 
+
+
+/* JNI receives the media context of the device and sets the context*/
+
 extern "C"
 JNIEXPORT void
 JNICALL
 
 Java_nodes_helsinki_mdiaproximity_MediaContext_setMediaContext(JNIEnv *, jobject, jint context) {
+
+
+    pthread_mutex_lock(&media_lock);
+    device_media_context = context;
+    media_context_time = (get_time_second()-1)*1000;
+    pthread_mutex_unlock(&media_lock);
+
+
+    /* Probably we could have a pthread start here which would wait to
+     * expire the timer of 7 seconds soon*/
+
+
 
 }

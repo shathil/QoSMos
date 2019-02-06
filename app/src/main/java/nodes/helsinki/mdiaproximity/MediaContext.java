@@ -87,29 +87,16 @@ public class MediaContext extends Service {
         handler.post(new Runnable() {
 
 
-            private String callType = null;
             private int delayed = 1000;
-            private boolean candidateFound = false;
-            private boolean sampling = true;
-            private String mstoWrite = null;
-            private long audioSession = 0;
-            private long audioTerminated = 0;
             private boolean voipState = false;
             private boolean musicState = false;
             private boolean cameraState = false;
-            private boolean gsmCallState = false;
-            private int inactivityCounter = 0;
-
-
-            private AudioStat audioStat = null;
-            private FileWriter writer = null;
-            private String filePath = getExternalStorageDirectory()+"/FlowLogs.txt";
-
+            private int mediaState = 0;
+            private int timeer = 0;
 
             //private FlowAppQueue appQueue = FlowAppQueue.getInstance();
 
 
-            public native void setMediaContext(int mcontext);
 
 
             @Override
@@ -126,172 +113,58 @@ public class MediaContext extends Service {
                 if(SensorQueue.getQueueInstance().get("Camera") != null)
                     cameraState = SensorQueue.getQueueInstance().pop("Camera");
 
-                //Set the MediaContextThroughJNI
 
-                if(audioStat != null){
-                    Log.d("Voice QoE", "Voice missed "+musicState+" "+voipState);
+                //Video conversation
+                if (mediaState == 0) {
+                    if (voipState && cameraState)
+                        mediaState = 7;
 
-                }
+                    // Audio conversation
+                    if (voipState && !cameraState)
+                        mediaState = 3;
 
-                if (audioStat == null){
+                    // live video broadcast
+                    if (!voipState && cameraState)
+                        mediaState = 6;
 
-                    if (tm.getCallState() != TelephonyManager.CALL_STATE_IDLE){
-                        long lastAudioTime = System.currentTimeMillis();
-                        audioStat = new AudioStat(MetaMineConstants.MetaMineGSM,lastAudioTime);
+                    // Streaming
+                    if (musicState)
+                        mediaState = 1;
 
-                    }
-                    if (audioStat == null && voipState){
-
-                        if (this.audioSession == 0)
-                            this.audioSession = System.currentTimeMillis();
-
-
-                        /* In the case of outgoing call there could be some delay in updating the proc files.*/
-                        Map<String, String> candidates = MetaMineConstants.getCandidateFlow(audioSession,1000);
-                        if (candidates.size()>0){
-                            audioStat = new AudioStat(MetaMineConstants.MetaMineVoIP,audioSession);
-                            /*
-                            String msgForWrite ="";
-                            for(Map.Entry<String, String> entry: candidates.entrySet()){
-                                msgForWrite += audioSession+"::"+entry.getValue() + "::"+entry.getKey()+"\n";
-                            }
-                            msgForWrite += "\n";
-                            logAudioEvents(msgForWrite);
-                            //this.delayed = 1000;
-                            */
-
-                        }
-                    }
-                    if (musicState){
-                        long lastAudioTime = DeviceState.isMusicOn(audioManager);
-
-                        audioStat = new AudioStat(MetaMineConstants.MetaMineMusic,lastAudioTime);
-                        Log.d("AudioManagerVoiceCall", "user in call");
-
-                    }
-                }
-
-
-
-
-
-                // terminating the Voice.
-                if (audioStat!=null) {
-                    if ((audioStat.getAudioType() == MetaMineConstants.MetaMineGSM) && (tm.getCallState() == TelephonyManager.CALL_STATE_IDLE)) {
-                        long lastAudioTime = System.currentTimeMillis();
-                        String msgForWrite = lastAudioTime + ":" + "voice call terminated";
-                        logAudioEvents(msgForWrite);
-                        audioStat = null;
-                        sampling = true;
-
+                    if(mediaState>0) {
+                        //Set the MediaContext and Signal the JNI
+                        setMediaContext(mediaState);
                     }
 
                 }
 
-                if (audioStat!=null){// dummp the deleted flows
-                    if(((audioStat.getAudioType()==MetaMineConstants.MetaMineVoIP) && (!voipState)) ||
-                            ((audioStat.getAudioType()==MetaMineConstants.MetaMineMusic)&&(!musicState)))
-                    {
-
-                        if(audioTerminated == 0)
-                            audioTerminated = System.currentTimeMillis();
-
-                        //String msgForWrite ="";
-
-                        Log.d("EventTracker", "Ending event tracking...");
-
-                        /*
-                        if(MetaMineConstants.packetInEvents.size()>0){
-
-                            for (Map.Entry<Long,String> mEn : MetaMineConstants.packetInEvents.entrySet()){
-                                msgForWrite = mEn.getKey()+":"+mEn.getValue()+"\n";
-                                logAudioEvents(msgForWrite);
-                            }
-                            MetaMineConstants.packetInEvents.clear();
-
-                        }*/
-
-
-
-
-
-
-                    }else{
-
-
-                    }
+                // Media context is over.
+                if ((timeer > 0)&&(mediaState == 0)){
+                    // Set the media context of the device to CS0 and
+                    // signal JNI
+                    setMediaContext(mediaState);
                 }
 
-                //if (sampling)
-                //readProcFile();
+                // media context to continue
+                if(mediaState>0) {
+                    timeer += 1;
+                }
+
+                // Here we identify the dominating flow
+                if (timeer == 7){
+                    // find the flow with the maximum
+
+
+
+                }
+
+
+
 
 
             }
 
 
-            private void logAudioEvents(String toWrite){
-                //Log.d("logAudioEvents",toWrite);
-                String state = Environment.getExternalStorageState();
-                FileWriter writer = null;
-                if (Environment.MEDIA_MOUNTED.equals(state)) {
-                    try{
-
-                        writer = new FileWriter(filePath, true);
-                    }catch (IOException ie){
-                        Log.d("FileWriter", ie.toString());}
-                }
-                if(writer !=null){
-                    BufferedWriter bw = new BufferedWriter(writer);
-                    PrintWriter out = new PrintWriter(bw);
-                    out.print(toWrite);
-                    out.close();
-                    try{
-                        bw.close();
-
-                    }catch (IOException ie){
-                        Log.d("BufferedWriter", ie.toString());}
-                    try{
-                        writer.close();
-                    }catch (IOException we){
-                        Log.d("FileWriter", we.toString());}
-
-                }
-            }
-
-            private boolean sessionEnds(AudioStat stat){
-
-                if ((stat.getAudioType()==MetaMineConstants.MetaMineGSM) &&
-                    (tm.getCallState() == TelephonyManager.CALL_STATE_OFFHOOK))
-                        return true;
-
-                if (stat.getAudioType()==MetaMineConstants.MetaMineVoIP){
-                    // Here we check for VoIP call termination
-                    /* Very typical solution would be that we maintian a list of the candidate flows and check only the reccently deleted
-                     * list of flows */
-
-                }
-
-                if (stat.getAudioType()==MetaMineConstants.MetaMineMusic){
-                    //  // Here we check for Streaming  termination
-                    /*Should be similar to the above*/
-                }
-
-                return false;
-            }
-
-            private void insertFlows (String[] newFlows){
-               // Set<String> newFlowSet = Sets.newHashSet();
-
-                Long beginTime = System.currentTimeMillis();
-                for (String flow: newFlows) {
-                    if (flow != null) {
-                        flow = beginTime+":"+flow.trim();
-                        //appQueue.addData(flow);
-                    }
-                }
-
-               // return newFlowSet;
-            }
 
 
 
@@ -409,6 +282,9 @@ public class MediaContext extends Service {
 
 
     }
+
+    public native void setMediaContext(int mcontext);
+    //public native void readContextualFlows(int mcontext);
 
 
 }

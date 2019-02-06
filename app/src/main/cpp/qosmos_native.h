@@ -32,6 +32,14 @@ struct flow{
 };
 
 
+#define video_ip 7 //111
+#define voice_ip 3 //011
+#define video_cast 6 //110
+#define audio_cast 2 //010
+#define video_stream 1 //001
+#define time_grace 3 // pm3 seconds // look for the flows within 3 seconds gap.
+
+
 
 struct sockaddr_in server_addr;
 int vpnfd = -1;
@@ -41,6 +49,12 @@ bool read_running = true;
 bool write_running = true;
 int get_dscp(char *buf);
 pthread_mutex_t lock;
+pthread_mutex_t media_lock;
+
+
+int device_media_context;
+long media_context_time; // ms
+
 
 std::unordered_map<std::string, struct flow*> flow_table;
 std::unordered_map<long, std::string> candid_table;
